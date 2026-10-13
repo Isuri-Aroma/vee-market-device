@@ -69,5 +69,30 @@ Hardware (fill in the blanks; ask the user if unknown):
 - Files: firmware/include/config.h (server address, ids, poll interval), firmware/include/secrets.h
   (Wi-Fi name/password, device key; git-ignored, never commit).
 
+## Build, upload and test loop (Claude Code may run these, asking the user first)
+Use arduino-cli instead of copy-pasting into the Arduino IDE. Sketch lives in firmware/vee_device/
+(folder name must equal the .ino name). Include shared headers as "../include/config.h" and
+"../include/secrets.h".
+
+One-time setup:
+- arduino-cli config init
+- arduino-cli config add board_manager.additional_urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+- arduino-cli core update-index
+- arduino-cli core install esp32:esp32
+- arduino-cli board list          (find the port, e.g. COM3 on Windows)
+
+Each cycle (board type esp32:esp32:esp32 = "ESP32 Dev Module"; change if the module differs):
+1. arduino-cli compile --fqbn esp32:esp32:esp32 firmware/vee_device
+2. arduino-cli upload -p <PORT> --fqbn esp32:esp32:esp32 firmware/vee_device
+3. Read the device's serial output at 115200 baud. Monitor never ends by itself: capture a short
+   window (e.g. 20 s) or ask the user to paste the output.
+4. Check the fake server dashboard Live log: every request should appear, readings should show
+   "Contract check: PASS". Run the matching dashboard test (H5..H10, F1..F8).
+5. Fix, repeat. Commit small, with clear messages, when something works.
+
+Claude cannot see the screen, hear the buzzer or press the button: ask the user what the device
+shows and what happened. Close the Arduino IDE Serial Monitor before uploading (it holds the port).
+Run the fake server with: mvn spring-boot:run  (second terminal), then open http://localhost:8080.
+
 ## Working style
 User is new to IoT: explain simply, keep changes small, run ./test-fake-server.sh after changes.
