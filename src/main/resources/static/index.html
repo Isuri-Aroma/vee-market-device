@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vee Market Fake Server</title>
+<style>
+  :root { --bg:#f6f7f4; --card:#fff; --ink:#1d2320; --mute:#6a726d; --line:#dfe3de; --ok:#1f7a3f; --warn:#a46200; --err:#b3261e; --acc:#2d5b3c; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  header { background:var(--acc); color:#fff; padding:14px 20px; display:flex; flex-wrap:wrap; gap:8px 24px; align-items:baseline; }
+  header h1 { font-size:18px; margin:0; }
+  header .addr { font-family:ui-monospace, Menlo, monospace; font-size:13px; opacity:.95; }
+  main { display:grid; grid-template-columns: 380px 1fr; gap:16px; padding:16px; }
+  @media (max-width: 900px) { main { grid-template-columns:1fr; } }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:14px; margin-bottom:16px; }
+  .card h2 { font-size:13px; text-transform:uppercase; letter-spacing:.04em; color:var(--mute); margin:0 0 10px; }
+  label { display:block; font-size:12px; color:var(--mute); margin-top:6px; }
+  input { width:100%; padding:7px 8px; border:1px solid var(--line); border-radius:6px; font:inherit; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+  button { border:1px solid var(--line); background:#fff; border-radius:6px; padding:7px 10px; font:inherit; cursor:pointer; }
+  button:hover { border-color:var(--acc); }
+  button.primary { background:var(--acc); color:#fff; border-color:var(--acc); }
+  button.danger { color:var(--err); }
+  .big { font-size:22px; font-weight:600; }
+  .pill { display:inline-block; padding:1px 8px; border-radius:99px; font-size:12px; font-weight:600; }
+  .pill.ok { background:#e3f1e7; color:var(--ok); } .pill.warn { background:#fbefdc; color:var(--warn); } .pill.err { background:#f8e1df; color:var(--err); } .pill.mute { background:#eee; color:var(--mute); }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { text-align:left; padding:5px 6px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--mute); font-weight:500; }
+  code, .mono { font-family:ui-monospace, Menlo, monospace; font-size:12px; }
+  #log { height:420px; overflow:auto; background:#111612; color:#d7e2da; border-radius:6px; padding:8px; font-family:ui-monospace, Menlo, monospace; font-size:12px; }
+  #log .ok { color:#7fd49a; } #log .warn { color:#f2c46b; } #log .err { color:#ff8a80; } #log .d { color:#9aa59e; white-space:pre-wrap; padding-left:16px; }
+  .tests li { margin:6px 0; } .tests b { display:inline-block; min-width:34px; }
+  .tests small { color:var(--mute); display:block; padding-left:58px; }
+  .muted { color:var(--mute); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Vee Market — FAKE server</h1>
+  <span class="addr" id="addr">…</span>
+</header>
+<main>
+  <div>
+    <div class="card">
+      <h2>Device</h2>
+      <div id="dev">waiting…</div>
+      <div class="row">
+        <button onclick="post('/fake/device/'+DEV+'?status=disabled')" class="danger">Disable device</button>
+        <button onclick="post('/fake/device/'+DEV+'?status=active')">Enable device</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Play the farmer's app</h2>
+      <label>Farmer name (shown on the device screen)</label>
+      <input id="farmer" value="Nimal">
+      <label>Lot id</label>
+      <input id="lot" value="123" type="number">
+      <div class="row">
+        <button class="primary" onclick="startTest()">Start test</button>
+        <button onclick="cancelOpen()">Cancel open test</button>
+      </div>
+      <div id="startMsg" class="muted" style="margin-top:6px"></div>
+    </div>
+
+    <div class="card">
+      <h2>Session length</h2>
+      <div class="row">
+        <button onclick="post('/fake/settings?session_seconds=300')">5 min (real)</button>
+        <button onclick="post('/fake/settings?session_seconds=30')">30 s (fast expiry test)</button>
+      </div>
+      <div class="muted" id="sesLen" style="margin-top:6px"></div>
+    </div>
+
+    <div class="card">
+      <h2>Make the server misbehave</h2>
+      <div class="row">
+        <button onclick="post('/fake/fault?target=reading&mode=save_then_500')">Save reading, reply 500</button>
+        <button onclick="post('/fake/fault?target=reading&mode=save_then_slow&delay_ms=8000')">Save reading, reply after 8 s</button>
+        <button onclick="post('/fake/fault?target=reading&mode=500')">Reading → 500 (not saved)</button>
+        <button onclick="post('/fake/fault?target=poll&mode=500&times=5')">Next 5 polls → 500</button>
+        <button onclick="post('/fake/fault?target=poll&mode=slow&times=1&delay_ms=8000')">Next poll slow (8 s)</button>
+        <button onclick="del('/fake/fault')">Clear faults</button>
+      </div>
+      <div class="muted mono" id="faults" style="margin-top:6px"></div>
+      <div class="row"><button class="danger" onclick="if(confirm('Wipe all sessions and readings?'))post('/fake/reset')">Reset everything</button></div>
+    </div>
+
+    <div class="card">
+      <h2>Tests for today</h2>
+      <ol class="tests" id="tests" style="padding-left:0;list-style:none;margin:0"></ol>
+    </div>
+  </div>
+
+  <div>
+    <div class="card">
+      <h2>Live log</h2>
+      <div id="log"></div>
+    </div>
+    <div class="card">
+      <h2>Sessions</h2>
+      <div id="sessions"></div>
+    </div>
+    <div class="card">
+      <h2>Readings (write-once)</h2>
+      <div id="readings"></div>
+    </div>
+  </div>
+</main>
+
+<script>
+const DEV = 'VM-0001';
+let lastEvent = 0;
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+async function post(url, body) {
+  const r = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: body ? JSON.stringify(body) : null });
+  refresh(); return r;
+}
+async function del(url) { await fetch(url, { method:'DELETE' }); refresh(); }
+
+async function startTest() {
+  const r = await post('/api/tests/start', { device_id: DEV, lot_id: Number($('lot').value), farmer_name: $('farmer').value });
+  const j = await r.json();
+  $('startMsg').textContent = r.ok ? `Session ${j.session_id} open, expires ${j.expires_at}` : `${r.status}: ${j.error}`;
+}
+async function cancelOpen() {
+  const s = await (await fetch('/fake/state')).json();
+  const open = s.sessions.find(x => x.status === 'open');
+  if (!open) { $('startMsg').textContent = 'No open test.'; return; }
+  await post(`/api/tests/${open.id}/cancel`);
+  $('startMsg').textContent = `Session ${open.id} cancelled.`;
+}
+
+const pill = st => {
+  const c = {open:'warn', done:'ok', expired:'mute', cancelled:'mute', active:'ok', disabled:'err'}[st] || 'mute';
+  return `<span class="pill ${c}">${esc(st)}</span>`;
+};
+
+async function refresh() {
+  try {
+    const s = await (await fetch('/fake/state')).json();
+    $('addr').innerHTML = 'ESP32 server address: ' + s.addresses.map(a => `<b>http://${a}:${location.port || 80}</b>`).join(' &nbsp;or&nbsp; ');
+    const d = s.devices[0];
+    if (d) {
+      const seen = d.seconds_since_seen;
+      const online = seen !== null && seen <= 5;
+      $('dev').innerHTML = `<div class="big">${esc(d.device_code)} ${pill(d.status)} ${online ? '<span class="pill ok">polling</span>' : '<span class="pill err">not polling</span>'}</div>
+        <div class="muted">Last seen: ${seen === null ? 'never' : seen + ' s ago'} · polls: ${d.polls} · rejected in last 60 s: <b style="color:${d.rejected_last_60s > 6 ? 'var(--err)' : 'inherit'}">${d.rejected_last_60s}</b></div>
+        <div class="muted">Firmware: ${esc(d.firmware || '–')} · Calibration: ${esc(d.calibration_version || '–')}</div>`;
+    }
+    $('sesLen').textContent = `New sessions last ${s.settings.session_seconds} s. Valid moisture: ${s.settings.moisture_min}–${s.settings.moisture_max}%.`;
+    $('faults').textContent = Object.keys(s.faults).length ? 'Armed: ' + JSON.stringify(s.faults) : 'No faults armed.';
+    $('sessions').innerHTML = s.sessions.length ? `<table><tr><th>id</th><th>farmer</th><th>lot</th><th>status</th><th>expires in</th><th>reading</th></tr>` +
+      s.sessions.slice(0, 15).map(x => `<tr><td>${x.id}</td><td>${esc(x.farmer_name)}</td><td>${esc(x.lot_code)}</td><td>${pill(x.status)}</td><td>${x.expires_in_s ?? '–'}${x.expires_in_s != null ? ' s' : ''}</td><td>${x.reading_id ?? '–'}</td></tr>`).join('') + '</table>' : '<span class="muted">No sessions yet. Press “Start test”.</span>';
+    $('readings').innerHTML = s.readings.length ? `<table><tr><th>id</th><th>session</th><th>moisture</th><th>zones T/M/B</th><th>spread</th><th>temp</th><th>retries ignored</th></tr>` +
+      s.readings.slice(0, 25).map(r => { const b = r.body, z = b.zones || {}; return `<tr><td>${r.id}</td><td>${r.session_id}</td><td><b>${b.moisture_pct}%</b></td><td>${z.top} / ${z.middle} / ${z.bottom}</td><td>${b.spread_pct}</td><td>${b.temp_c} °C</td><td>${r.duplicates_ignored}</td></tr>`; }).join('') + '</table>' : '<span class="muted">No readings yet.</span>';
+
+    const ev = await (await fetch('/fake/log?after=' + lastEvent)).json();
+    if (ev.length) {
+      const box = $('log'); const atBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 30;
+      for (const e of ev) {
+        lastEvent = e.n;
+        box.insertAdjacentHTML('beforeend', `<div class="${e.level}">[${esc(e.time)}] ${esc(e.who)}  ${esc(e.line)}</div>` + (e.detail ? `<div class="d">${esc(e.detail)}</div>` : ''));
+      }
+      if (atBottom) box.scrollTop = box.scrollHeight;
+    }
+  } catch (e) { $('addr').textContent = 'Fake server not reachable — is it running?'; }
+}
+
+const TESTS = [
+  ['H5', 'Poll', 'Device shows farmer name + “Insert probe” within 3 s of “Start test”.'],
+  ['H6', 'Send reading', 'Press button. Log shows “SAVED … Contract check: PASS”.'],
+  ['H7', 'Wi-Fi drop', 'Hotspot off after measuring → device shows “Not sent”; hotspot on → it sends.'],
+  ['H8', 'Wrong key', 'Change key in firmware → “Device error”; rejected/60 s stays low (no hammering).'],
+  ['H9', 'Expiry', 'Set 30 s, start, don’t press → device back to idle; session shows expired.'],
+  ['F1', 'Duplicate', 'Arm “Save reading, reply 500”, press → device retries; 1 reading, “retries ignored” = 1.'],
+  ['F2', 'Slow reply', 'Arm “reply after 8 s” → device times out, retries, gets OK; still 1 reading.'],
+  ['F3', 'Out of range', 'Probe in air/water → 422 → device shows “Retry test”.'],
+  ['F4', 'Session gone', 'Measure, then Cancel before it sends (or hotspot off till expiry) → 409 → idle.'],
+  ['F5', 'Cancelled', 'Start, then Cancel while device shows “Insert probe” → device returns to idle.'],
+  ['F6', 'Disabled', 'Disable device → 403 → device shows an error, polls slowly; Enable → recovers.'],
+  ['F7', 'Server down', 'Stop the server (Ctrl+C) → device shows server error, no crash; restart → recovers.'],
+  ['F8', 'Power loss', 'Unplug mid-test → device boots to idle; session expires on server.'],
+  ['H10', 'Long run', '20 tests in a row: 20 readings, no hang, no restart, no odd values.'],
+];
+function renderTests() {
+  let done = {}; try { done = JSON.parse(localStorage.getItem('veeTests') || '{}'); } catch (e) {}
+  $('tests').innerHTML = TESTS.map(([id, name, how]) => `<li><label style="display:inline;color:inherit"><input type="checkbox" style="width:auto" ${done[id] ? 'checked' : ''} onchange="tick('${id}', this.checked)"> <b>${id}</b> ${name}</label><small>${how}</small></li>`).join('');
+}
+function tick(id, v) { let d = {}; try { d = JSON.parse(localStorage.getItem('veeTests') || '{}'); d[id] = v; localStorage.setItem('veeTests', JSON.stringify(d)); } catch (e) {} }
+
+renderTests();
+refresh();
+setInterval(refresh, 1000);
+</script>
+</body>
+</html>
