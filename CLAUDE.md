@@ -39,5 +39,35 @@ Dashboard: src/main/resources/static/index.html. Self-test: ./test-fake-server.s
   ESP32 code; screen being integrated.
   Watch out: ADC2 pins (GPIO 0,2,4,12-15,25-27) fail with Wi-Fi on — sensors must be on GPIO 32-39.
 
+## Firmware (for whoever writes the ESP32 code — lives in firmware/)
+Server to test against: this fake server. Address is printed on start and shown at the top of the
+dashboard (http://localhost:8080). ESP32 and the machine running the server must be on the same
+Wi-Fi (the phone hotspot). Plain HTTP, JSON.
+
+Every request sends headers X-Device-Id: VM-0001 and X-Device-Key: test-secret-0001
+(real values may change; keep them in config.h / secrets.h, never hard-code in the logic).
+
+Device behaviour to implement (this is what the 14 dashboard tests check):
+- Idle: POST /api/device/poll every 2 s. {session:null} -> stay idle.
+- Session present: show farmer_name + "Insert probe". Button press -> measure -> POST reading.
+- Reading body: {session_id, moisture_pct, zones{top,middle,bottom}, spread_pct, temp_c,
+  calibration_version, firmware}. One decimal everywhere. Reuse the SAME reading if resending.
+- 200 ok -> show result, back to idle. 422 -> "Retry test". 409 -> session gone, back to idle.
+- 401 wrong key -> "Device error", do NOT hammer the server (keep requests/min low).
+- 403 disabled -> show error, poll slowly, recover when enabled again.
+- No Wi-Fi / server down / timeout -> "Not sent", keep the reading, retry, never crash or hang.
+- Power loss mid-test -> boot to idle; the server expires the session by itself.
+- The device never talks to the phone and never touches the database.
+
+Hardware (fill in the blanks; ask the user if unknown):
+- Board: ESP32 (exact module: ___)
+- Moisture sensors: 3 capacitive, zones top/middle/bottom, GPIO ___ / ___ / ___ (must be 32-39,
+  ADC1 only: ADC2 pins fail while Wi-Fi is on)
+- Temperature probe: type ___, GPIO ___
+- Screen: model ___ (small; cannot show Sinhala, so English letters only), pins ___
+- Button: GPIO ___   Buzzer: GPIO ___
+- Files: firmware/include/config.h (server address, ids, poll interval), firmware/include/secrets.h
+  (Wi-Fi name/password, device key; git-ignored, never commit).
+
 ## Working style
 User is new to IoT: explain simply, keep changes small, run ./test-fake-server.sh after changes.
